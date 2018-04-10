@@ -59,24 +59,21 @@ class PTBInput(object):
   """The input data."""
 
   def __init__(self, config, data, name=None):
-    self.batch_size = batch_size = config.batch_size
-    self.num_steps = num_steps = config.num_steps
-    self.epoch_size = ((len(data) // batch_size) - 1) // num_steps
     self.input_data, self.targets = reader.ptb_producer(
-        data, batch_size, num_steps, name=name)
+        data, config.batch_size, config.num_steps, name=name)
 
 class PTBModel(object):
   """The PTB model."""
 
-  def __init__(self, is_training, config):
+  def __init__(self, is_training, config, input_):
     self._is_training = is_training
     self.batch_size = batch_size = config.batch_size
     self.num_steps = num_steps = config.num_steps
     size = config.hidden_size
     vocab_size = config.vocab_size
 
-    self._input_data = tf.placeholder(tf.int32, [batch_size, num_steps])    # input
-    self._targets = tf.placeholder(tf.int32, [batch_size, num_steps])   # output, length num_steps
+    self._input_data = input_.input_data#tf.placeholder(tf.int32, [batch_size, num_steps])    # input
+    self._targets = input_.targets #tf.placeholder(tf.int32, [batch_size, num_steps])   # output, length num_steps
 
     with tf.device("/cpu:0"):
       embedding = tf.get_variable(
@@ -223,11 +220,6 @@ def run_epoch(session, model, data, eval_op=None, verbose=False):
   epoch_size  = ((len(data) // model.batch_size) - 1) // model.num_steps
   for step in range(epoch_size):
     feed_dict = {}
-    x, y = reader.ptb_producer(data, model.batch_size, model.num_steps)
-    print('x is ', x)
-    print('y is ', y)
-    feed_dict[model._input_data] = x
-    feed_dict[model._targets] = y
     for i, (c, h) in enumerate(model.initial_state):
       feed_dict[c] = state[i].c
       feed_dict[h] = state[i].h
@@ -262,21 +254,23 @@ if __name__ == "__main__":
                                                 config.init_scale)
 
     with tf.name_scope("Train"):
+      train_input = PTBInput(config=config, data=train_data, name="TrainInput")
       with tf.variable_scope("Model", reuse=None, initializer=init):
-        mtrain = PTBModel(is_training=True, config=config)
+        mtrain = PTBModel(is_training=True, config=config, input_=train_input)
       tf.summary.scalar("Training Loss", mtrain.cost)
       tf.summary.scalar("Learning Rate", mtrain.lr)
 
     with tf.name_scope("Validation"):
+      valid_input = PTBInput(config=config, data=valid_data, name="ValidationInput")
       with tf.variable_scope("Model", reuse=True, initializer=init):
-        mvalid = PTBModel(is_training=False, config=config)
+        mvalid = PTBModel(is_training=False, config=config, input_=valid_input)
       tf.summary.scalar("Validation Loss", mvalid.cost)
-    """
+
     with tf.name_scope("Test"):
       test_input = PTBInput(config=test_config, data=test_data, name="TestInput")
       with tf.variable_scope("Model", reuse=True, initializer=init):
         mtest = PTBModel(is_training=False, config=test_config, input_=test_input)
-    """
+
     #models = {"Train": mtrain, "Validation": mvalid, "Test": mtest}
 
     saver = tf.train.Saver()
