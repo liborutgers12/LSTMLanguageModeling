@@ -220,8 +220,7 @@ def run_epoch(session, model, data, eval_op=None, verbose=False):
   if eval_op is not None:
     fetches["eval_op"] = eval_op
 
-  step = 0
-  for (x, y) in enumerate(reader.ptb_producer(data, model.batch_size, model.num_steps)):
+  for step, (x, y) in enumerate(reader.ptb_producer(data, model.batch_size, model.num_steps)):
     feed_dict = {}
     print('x is ', x)
     print('y is ', y)
@@ -248,7 +247,6 @@ def run_epoch(session, model, data, eval_op=None, verbose=False):
              iters * model.input.batch_size * 1 /
              (time.time() - start_time)))
 
-    step += 1
   return np.exp(costs / iters)
 
 
