@@ -68,21 +68,22 @@ class PTBInput(object):
 class PTBModel(object):
   """The PTB model."""
 
-  def __init__(self, is_training, config, input_):
+  def __init__(self, is_training, config):
     self._is_training = is_training
-    self._input = input_
-    self._rnn_params = None
-    self._cell = None
-    self.batch_size = input_.batch_size
-    self.num_steps = input_.num_steps
+    self.batch_size = batch_size = config.batch_size
+    self.num_steps = num_steps = config.num_steps
     size = config.hidden_size
     vocab_size = config.vocab_size
 
+    self._input_data = tf.placeholder(tf.int32, [batch_size, num_steps])    # input
+    self._targets = tf.placeholder(tf.int32, [batch_size, num_steps])   # output, length num_steps
+
     with tf.device("/cpu:0"):
       embedding = tf.get_variable(
-          "embedding", [vocab_size, size], dtype=data_type())
-      inputs = tf.nn.embedding_lookup(embedding, input_.input_data)
-    
+        "embedding", [vocab_size, size], dtype=data_type())
+      print(embedding)
+      inputs = tf.nn.embedding_lookup(embedding, self._input_data)
+
     if is_training and config.keep_prob < 1:
       inputs = tf.nn.dropout(inputs, config.keep_prob)
 
@@ -98,7 +99,7 @@ class PTBModel(object):
     # Use the contrib sequence loss and average over the batches
     loss = tf.contrib.seq2seq.sequence_loss(
         logits,
-        input_.targets,
+        self._targets,
         tf.ones([self.batch_size, self.num_steps], dtype=data_type()),
         average_across_timesteps=False,
         average_across_batch=True)
@@ -131,7 +132,7 @@ class PTBModel(object):
     if config.rnn_mode == 'block':
       return tf.contrib.rnn.LSTMBlockCell(
           config.hidden_size, forget_bias=0.0)
-    raise ValueError("rnn_mode %s not supported" % config.rnn_mode)  
+    raise ValueError("rnn_mode %s not supported" % config.rnn_mode)
 
   def _build_rnn_graph_lstm(self, inputs, config, is_training):
     """Build the inference graph using canonical LSTM cells."""
@@ -163,6 +164,7 @@ class PTBModel(object):
     with tf.variable_scope("RNN"):
       for time_step in range(self.num_steps):
         if time_step > 0: tf.get_variable_scope().reuse_variables()
+        print(time_step)
         (cell_output, state) = cell(inputs[:, time_step, :], state)
         outputs.append(cell_output)
     output = tf.reshape(tf.concat(outputs, 1), [-1, config.hidden_size])
@@ -173,7 +175,7 @@ class PTBModel(object):
 
   @property
   def input(self):
-    return self._input
+    return self._input_data
 
   @property
   def initial_state(self):
@@ -204,7 +206,7 @@ class PTBModel(object):
     return self._final_state_name
 
 import time
-def run_epoch(session, model, eval_op=None, verbose=False):
+def run_epoch(session, model, data, eval_op=None, verbose=False):
   """Runs the model on the given data."""
   start_time = time.time()
   costs = 0.0
@@ -218,12 +220,21 @@ def run_epoch(session, model, eval_op=None, verbose=False):
   if eval_op is not None:
     fetches["eval_op"] = eval_op
 
-  for step in range(model.input.epoch_size):
+  step = 0
+  for (x, y) in enumerate(reader.ptb_producer(data, model.batch_size, model.num_steps)):
     feed_dict = {}
+    print('x is ', x)
+    print('y is ', y)
+    #session.run(x)
+    session.run(y)
+    print('x is ', x)
+    print('y is ', y)
+    feed_dict[model._input_data] = x
+    feed_dict[model._targets] = y
     for i, (c, h) in enumerate(model.initial_state):
       feed_dict[c] = state[i].c
       feed_dict[h] = state[i].h
-
+    #print(feed_dict)
     vals = session.run(fetches, feed_dict)
     cost = vals["cost"]
     state = vals["final_state"]
@@ -237,31 +248,32 @@ def run_epoch(session, model, eval_op=None, verbose=False):
              iters * model.input.batch_size * 1 /
              (time.time() - start_time)))
 
+    step += 1
   return np.exp(costs / iters)
 
-def main(_):
+
+#http://lib.csdn.net/article/98/59839?knId=1756
+if __name__ == "__main__":
   data_path = './simple-examples/data/'
   raw_data = reader.ptb_raw_data(data_path)
   train_data, valid_data, test_data, _ = raw_data
 
   config = TrainConfig()
   test_config = TestConfig()
-  
+
   with tf.Graph().as_default():
     init = tf.random_uniform_initializer(-config.init_scale,
                                                 config.init_scale)
-    
+
     with tf.name_scope("Train"):
-      train_input = PTBInput(config=config, data=train_data, name="TrainInput")
       with tf.variable_scope("Model", reuse=None, initializer=init):
-        mtrain = PTBModel(is_training=True, config=config, input_=train_input)
+        mtrain = PTBModel(is_training=True, config=config)
       tf.summary.scalar("Training Loss", mtrain.cost)
       tf.summary.scalar("Learning Rate", mtrain.lr)
 
     with tf.name_scope("Validation"):
-      valid_input = PTBInput(config=config, data=valid_data, name="ValidationInput")
       with tf.variable_scope("Model", reuse=True, initializer=init):
-        mvalid = PTBModel(is_training=False, config=config, input_=valid_input)
+        mvalid = PTBModel(is_training=False, config=config)
       tf.summary.scalar("Validation Loss", mvalid.cost)
     """
     with tf.name_scope("Test"):
@@ -271,7 +283,10 @@ def main(_):
     """
     #models = {"Train": mtrain, "Validation": mvalid, "Test": mtest}
 
-    saver = tf.train.Saver()    
+    saver = tf.train.Saver()
+
+    #tf.initialize_all_variables().run()
+    tf.global_variables_initializer()
 
     # Start the training/validation/evaluation
     with tf.Session() as session:
@@ -280,10 +295,9 @@ def main(_):
         mtrain.assign_lr(session, config.learning_rate * lr_decay)
 
         print("Epoch: %d Learning rate: %.3f" % (i + 1, session.run(mtrain.lr)))
-        train_perplexity = run_epoch(session, mtrain, eval_op=mtrain.train_op,
-                                     verbose=True)
+        train_perplexity = run_epoch(session, mtrain, train_data, eval_op=mtrain.train_op, verbose=True)
         print("Epoch: %d Train Perplexity: %.3f" % (i + 1, train_perplexity))
-        valid_perplexity = run_epoch(session, mvalid)
+        valid_perplexity = run_epoch(session, mvalid, valid_data)
         print("Epoch: %d Valid Perplexity: %.3f" % (i + 1, valid_perplexity))
 
       #test_perplexity = run_epoch(session, mtest)
@@ -291,7 +305,3 @@ def main(_):
 
       print("Saving model to %s." % FLAGS.save_path)
       saver.save(session, "./my_model_final.ckpt")
-
-if __name__ == "__main__":
-  tf.app.run()
-
