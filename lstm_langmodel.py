@@ -226,10 +226,6 @@ def run_epoch(session, model, data, eval_op=None, verbose=False):
     x, y = reader.ptb_producer(data, model.batch_size, model.num_steps)
     print('x is ', x)
     print('y is ', y)
-    session.run(x)
-    session.run(y)
-    print('x is ', x)
-    print('y is ', y)
     feed_dict[model._input_data] = x
     feed_dict[model._targets] = y
     for i, (c, h) in enumerate(model.initial_state):
