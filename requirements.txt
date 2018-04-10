@@ -1,2 +1,3 @@
-numpy
-tensorflow
+sudo apt-get install python-pip
+sudo pip install numpy
+sudo pip install tensorflow
