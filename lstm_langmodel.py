@@ -220,11 +220,13 @@ def run_epoch(session, model, data, eval_op=None, verbose=False):
   if eval_op is not None:
     fetches["eval_op"] = eval_op
 
-  for step, (x, y) in enumerate(reader.ptb_producer(data, model.batch_size, model.num_steps)):
+  epoch_size  = ((len(data) // model.batch_size) - 1) // model.num_steps
+  for step in range(epoch_size):
     feed_dict = {}
+    x, y = reader.ptb_producer(data, model.batch_size, model.num_steps)
     print('x is ', x)
     print('y is ', y)
-    #session.run(x)
+    session.run(x)
     session.run(y)
     print('x is ', x)
     print('y is ', y)
@@ -239,12 +241,12 @@ def run_epoch(session, model, data, eval_op=None, verbose=False):
     state = vals["final_state"]
 
     costs += cost
-    iters += model.input.num_steps
+    iters += model.num_steps
 
-    if verbose and step % (model.input.epoch_size // 10) == 10:
+    if verbose and step % (epoch_size // 10) == 10:
       print("%.3f perplexity: %.3f speed: %.0f wps" %
-            (step * 1.0 / model.input.epoch_size, np.exp(costs / iters),
-             iters * model.input.batch_size * 1 /
+            (step * 1.0 / epoch_size, np.exp(costs / iters),
+             iters * model.batch_size * 1 /
              (time.time() - start_time)))
 
   return np.exp(costs / iters)
