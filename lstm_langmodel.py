@@ -43,7 +43,7 @@ class TestConfig(object):
   max_grad_norm = 1
   num_layers = 1
   num_steps = 1
-  hidden_size = 2
+  hidden_size = 200
   max_epoch = 1
   max_max_epoch = 1
   keep_prob = 1.0
