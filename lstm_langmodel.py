@@ -59,16 +59,17 @@ class PTBInput(object):
   """The input data."""
 
   def __init__(self, config, data, name=None):
+    self.epoch_size = ((len(data) // config.batch_size) - 1) // config.num_steps
     self.input_data, self.targets = reader.ptb_producer(
         data, config.batch_size, config.num_steps, name=name)
 
 class PTBModel(object):
   """The PTB model."""
-
   def __init__(self, is_training, config, input_):
     self._is_training = is_training
     self.batch_size = batch_size = config.batch_size
     self.num_steps = num_steps = config.num_steps
+    self.epoch_size = input_.epoch_size
     size = config.hidden_size
     vocab_size = config.vocab_size
 
@@ -78,7 +79,7 @@ class PTBModel(object):
     with tf.device("/cpu:0"):
       embedding = tf.get_variable(
         "embedding", [vocab_size, size], dtype=data_type())
-      print(embedding)
+      #print(embedding)
       inputs = tf.nn.embedding_lookup(embedding, self._input_data)
 
     if is_training and config.keep_prob < 1:
@@ -161,7 +162,6 @@ class PTBModel(object):
     with tf.variable_scope("RNN"):
       for time_step in range(self.num_steps):
         if time_step > 0: tf.get_variable_scope().reuse_variables()
-        print(time_step)
         (cell_output, state) = cell(inputs[:, time_step, :], state)
         outputs.append(cell_output)
     output = tf.reshape(tf.concat(outputs, 1), [-1, config.hidden_size])
@@ -203,7 +203,7 @@ class PTBModel(object):
     return self._final_state_name
 
 import time
-def run_epoch(session, model, data, eval_op=None, verbose=False):
+def run_epoch(session, model, eval_op=None, verbose=False):
   """Runs the model on the given data."""
   start_time = time.time()
   costs = 0.0
@@ -217,7 +217,7 @@ def run_epoch(session, model, data, eval_op=None, verbose=False):
   if eval_op is not None:
     fetches["eval_op"] = eval_op
 
-  epoch_size  = ((len(data) // model.batch_size) - 1) // model.num_steps
+  epoch_size  = model.epoch_size
   for step in range(epoch_size):
     feed_dict = {}
     for i, (c, h) in enumerate(model.initial_state):
@@ -275,23 +275,24 @@ if __name__ == "__main__":
 
     saver = tf.train.Saver()
 
-    #tf.initialize_all_variables().run()
-    tf.global_variables_initializer()
-
     # Start the training/validation/evaluation
-    with tf.Session() as session:
+    savePath = './savePath/'
+    sv = tf.train.Supervisor(logdir=savePath)
+    config_proto = tf.ConfigProto(allow_soft_placement=False)
+    with sv.managed_session(config=config_proto) as session:
+      #tf.global_variables_initializer()
       for i in range(config.max_max_epoch):
         lr_decay = config.lr_decay ** max(i + 1 - config.max_epoch, 0.0)
         mtrain.assign_lr(session, config.learning_rate * lr_decay)
 
         print("Epoch: %d Learning rate: %.3f" % (i + 1, session.run(mtrain.lr)))
-        train_perplexity = run_epoch(session, mtrain, train_data, eval_op=mtrain.train_op, verbose=True)
+        train_perplexity = run_epoch(session, mtrain, eval_op=mtrain.train_op, verbose=True)
         print("Epoch: %d Train Perplexity: %.3f" % (i + 1, train_perplexity))
-        valid_perplexity = run_epoch(session, mvalid, valid_data)
+        valid_perplexity = run_epoch(session, mvalid)
         print("Epoch: %d Valid Perplexity: %.3f" % (i + 1, valid_perplexity))
 
-      #test_perplexity = run_epoch(session, mtest)
-      #print("Test Perplexity: %.3f" % test_perplexity)
+      test_perplexity = run_epoch(session, mtest)
+      print("Test Perplexity: %.3f" % test_perplexity)
 
-      print("Saving model to %s." % FLAGS.save_path)
-      saver.save(session, "./my_model_final.ckpt")
+      print("Saving model to %s." % savePath)
+      saver.save(session, savePath+"my_model_final.ckpt")
