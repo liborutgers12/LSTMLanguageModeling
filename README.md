@@ -14,12 +14,12 @@ $ tar xvf simple-examples.tgz
 ## Install prerequisite packages
 From folder /PATH/LSTMLanguageModeling/, run in Terminal
 ```
-./setup.sh
+$ ./setup.sh
 ```
 
 ## Train and test the model
 From folder /PATH/LSTMLanguageModeling/. run in Terminal
 ```
-python lstm_langmodel.py
+$ python lstm_langmodel.py
 ```
 
