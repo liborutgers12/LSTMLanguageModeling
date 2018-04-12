@@ -57,7 +57,6 @@ def data_type():
 
 class PTBInput(object):
   """The input data."""
-
   def __init__(self, config, data, name=None):
     self.epoch_size = ((len(data) // config.batch_size) - 1) // config.num_steps
     self.input_data, self.targets = reader.ptb_producer(
@@ -149,15 +148,6 @@ class PTBModel(object):
 
     self._initial_state = cell.zero_state(config.batch_size, data_type())
     state = self._initial_state
-    # Simplified version of tf.nn.static_rnn().
-    # This builds an unrolled LSTM for tutorial purposes only.
-    # In general, use tf.nn.static_rnn() or tf.nn.static_state_saving_rnn().
-    #
-    # The alternative version of the code below is:
-    #
-    # inputs = tf.unstack(inputs, num=self.num_steps, axis=1)
-    # outputs, state = tf.nn.static_rnn(cell, inputs,
-    #                                   initial_state=self._initial_state)
     outputs = []
     with tf.variable_scope("RNN"):
       for time_step in range(self.num_steps):
@@ -271,8 +261,6 @@ if __name__ == "__main__":
       with tf.variable_scope("Model", reuse=True, initializer=init):
         mtest = PTBModel(is_training=False, config=test_config, input_=test_input)
 
-    #models = {"Train": mtrain, "Validation": mvalid, "Test": mtest}
-
     saver = tf.train.Saver()
 
     # Start the training/validation/evaluation
@@ -280,7 +268,6 @@ if __name__ == "__main__":
     sv = tf.train.Supervisor(logdir=savePath)
     config_proto = tf.ConfigProto(allow_soft_placement=False)
     with sv.managed_session(config=config_proto) as session:
-      #tf.global_variables_initializer()
       for i in range(config.max_max_epoch):
         lr_decay = config.lr_decay ** max(i + 1 - config.max_epoch, 0.0)
         mtrain.assign_lr(session, config.learning_rate * lr_decay)
